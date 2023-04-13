@@ -28,8 +28,8 @@ public:
         return j * sizeX + i;
     }
 
-    bool isValidIndex(size_t i, size_t j) const {
-        return (i > 0) && (j > 0) && (i < sizeX) && (j < sizeY);
+    bool isValidIndex(size_t i, size_t j, size_t padding = 0) const {
+        return (i > padding) && (j > padding) && (i < sizeX - padding) && (j < sizeY - padding);
     }
 
     bool isBorderIndex(size_t i, size_t j) const {
