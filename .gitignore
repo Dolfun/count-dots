@@ -3,3 +3,5 @@ build/
 *.jpg
 *.png
 *.exe
+*.ilk
+*.pdb
