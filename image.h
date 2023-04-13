@@ -14,6 +14,7 @@ public:
 
     Image(size_t _sizeX, size_t _sizeY) : sizeX(_sizeX), sizeY(_sizeY) {
         data.resize(sizeX * sizeY);
+        std::fill(data.begin(), data.end(), 0.0);
     }
 
     size_t getSizeX() const {
@@ -95,6 +96,13 @@ public:
     }
 private:
     size_t size;
+};
+
+struct vec2 {
+    vec2() = default;
+    vec2(size_t _x, size_t _y) : x(_x), y(_y) {}
+    Image::size_t x = 0;
+    Image::size_t y = 0;
 };
 
 #endif

@@ -20,6 +20,7 @@ Image convolve(const Image& input, const Kernel& kernel, data_t factor = 1);
 std::pair<Image, Image> computeGradient(const Image& image);
 Image nonMinimalSuppression(const Image& gm, const Image& ga);
 Image doubleThresholding(const Image& image, double lowerThreshold, double upperThreshold);
+Image hysteresis(const Image& image);
 
 int main() {
     auto image = loadImage("input/1.jpg");
@@ -44,6 +45,9 @@ int main() {
 
     Image doubleThreshold = doubleThresholding(nms, 0.1, 0.2);
     saveImage(doubleThreshold, "output/1_dt.png");
+
+    Image hyst = hysteresis(doubleThreshold);
+    saveImage(hyst, "output/1_hyst.png");
 
     return 0;
 } 
@@ -204,6 +208,43 @@ Image doubleThresholding(const Image& image, double lowerThreshold, double upper
         if (image(i, j) >= maxValue * upperThreshold) output(i, j) = upperValue;
         else if (image(i, j) >= maxValue * lowerThreshold) output(i, j) = lowerValue;
         else output(i, j) = 0.0;
+    });
+
+    return output;
+}
+
+Image hysteresis(const Image& image) {
+    auto sizeX = image.getSizeX();
+    auto sizeY = image.getSizeY();
+    Image output(sizeX, sizeY), visited(sizeX, sizeY);
+
+    output.process2d([&](size_t i, size_t j) {
+        if (visited(i, j) > 0.0) return;
+        visited(i, j) = 1.0;
+        if (image(i, j) == 0.0) return;
+        else if (image(i, j) == 1.0) output(i, j) = 1.0;
+        else {
+            bool flag = false;
+            std::vector<vec2> points;
+            points.push_back({i, j});
+            for (auto& p : points) {
+                if (visited(p.x, p.y) > 0.0) continue;
+                visited(p.x, p.y) = 1.0;
+                for (size_t x = -1; x <= 1; ++x) {
+                    for (size_t y = -1; y <= 1; ++y) {
+                        size_t _i = i + x, _j = j + y;
+                        if (!output.isValidIndex(_i, _j) || visited(_i, _j) > 0.0) continue;
+                        if (image(_i, _j) == 1.0) flag = true;
+                        else if (image(_i, _j) > 0.0) points.push_back({_i, _j});
+                    }
+                }
+            }
+            if (flag) {
+                for (auto& p : points) {
+                    output(p.x, p.y) = 1.0;
+                }
+            }
+        }
     });
 
     return output;
