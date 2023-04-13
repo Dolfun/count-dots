@@ -1,107 +1,44 @@
 #include <iostream>
-#include <vector>
 #include <string>
-#include <functional>
+#include <utility>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-#define MAX_CHAR 255
-
-// Greyscale image class
-class Image {
-public:
-    using data_t = double;
-    using size_t = std::size_t;
-    using vector = std::vector<data_t>;
-
-    Image(size_t _imageX, size_t _imageY) : imageX(_imageX), imageY(_imageY) {
-        data.resize(imageX * imageY);
-    }
-
-    size_t getImageX() const {
-        return imageX;
-    }
-
-    size_t getImageY() const {
-        return imageY;
-    }
-
-    size_t get1dIndex(size_t i, size_t j) const {
-        return j * imageX + i;
-    }
-
-    bool isValidIndex(size_t i, size_t j) const {
-        return (i > 0) && (j > 0) && (i < imageX) && (j < imageY);
-    }
-
-    const vector getData() const {
-        return data;
-    }
-
-    data_t& operator() (size_t i) {
-        return data[i];
-    }
-
-    const data_t& operator() (size_t i) const {
-        return data[i];
-    }
-
-    data_t& operator() (size_t i, size_t j) {
-        return data[get1dIndex(i, j)];
-    }
-
-    const data_t& operator() (size_t i, size_t j) const {
-        return data[get1dIndex(i, j)];
-    }
-
-    template<typename Functor>
-    void process1d(Functor&& f) const {
-        for (size_t i = 0; i < data.size(); ++i) {
-            f(i);
-        }
-    }
-
-    template<typename Functor>
-    void process2d(Functor&& f) const {
-        for (size_t i = 0; i < imageX; ++i) {
-            for (size_t j = 0; j < imageY; ++j) {
-                f(i, j);
-            }
-        }
-    }
-
-protected:
-    vector& getData() {
-        return data;
-    }
-
-private:
-    size_t imageX, imageY;
-    vector data;
-};
-
+#include "image.h"
 using size_t = Image::size_t;
 using data_t = Image::data_t;
 
-class Kernel : public Image {
-public:
-    Kernel(size_t _size) : Image(_size, _size), size(_size) {}
+#define MAX_CHAR 255
 
-    void operator= (const vector& input) {
-        getData() = input;
-    }
+Image loadImage(std::string path);
+void saveImage(const Image& image, std::string path, bool negative = false);
+Image convolve(const Image& input, const Kernel& kernel, data_t norm_factor = 1);
+std::pair<Image, Image> computeGradient(const Image& image);
 
-    size_t getSize() const {
-        return size;
-    }
-private:
-    size_t size;
-};
+int main() {
+    auto image = loadImage("input/1.jpg");
+    auto imageX = image.getImageX();
+    auto imageY = image.getImageY();
+    saveImage(image, "output/1.png");
 
+    auto [gradX, gradY] = computeGradient(image);
 
+    saveImage(gradX, "output/1_x.png", true);
+    saveImage(gradY, "output/1_y.png", true);
+
+    Image gradient(imageX, imageY);
+    gradient.process2d([&](size_t i, size_t j) {
+        data_t x = gradX(i, j);
+        data_t y = gradY(i, j);
+        gradient(i, j) = std::sqrt(x * x + y * y);
+    });
+    saveImage(gradient, "output/1_g.png");
+
+    return 0;
+} 
 
 Image loadImage(std::string path) {
     int width, height, nrChannels;
@@ -127,7 +64,7 @@ Image loadImage(std::string path) {
     return image;
 }
 
-void saveImage(const Image& image, std::string path, bool negative = false) {
+void saveImage(const Image& image, std::string path, bool negative) {
     auto imageX = image.getImageX();
     auto imageY = image.getImageY();
     int nrChannels = 4;
@@ -163,14 +100,14 @@ void saveImage(const Image& image, std::string path, bool negative = false) {
 }
 
 // Odd sized square kernel convulation
-Image convolve(const Image& input, const Kernel& kernel, data_t norm_factor = 1) {
+Image convolve(const Image& input, const Kernel& kernel, data_t norm_factor) {
     auto imageX = input.getImageX();
     auto imageY = input.getImageY();
     Image output(imageX, imageY);
     output.process2d([&](size_t i, size_t j) {
         data_t sum = 0;
-        size_t n = kernel.getImageX();
         kernel.process2d([&](size_t x, size_t y) {
+            size_t n = kernel.getSize();
             y = n - y - 1;
             auto i_ = i + x - n / 2;
             auto j_ = j + y - n / 2;
@@ -183,11 +120,7 @@ Image convolve(const Image& input, const Kernel& kernel, data_t norm_factor = 1)
     return output;
 }
 
-int main() {
-    auto image = loadImage("input/1.jpg");
-    auto imageX = image.getImageX();
-    auto imageY = image.getImageY();
-
+std::pair<Image, Image> computeGradient(const Image& image) {
     Kernel gX(3), gY(3);
     gX = { 1,  0, -1,
            2,  0, -2,
@@ -196,19 +129,13 @@ int main() {
            0,  0,  0,
           -1, -2, -1};
     data_t norm_factor = 4;
-    auto gradX = convolve(image, gX, norm_factor);
-    auto gradY = convolve(image, gY, norm_factor);
 
-    Image gradient(image);
-    gradient.process2d([&](size_t i, size_t j) {
-        data_t x = gradX(i, j);
-        data_t y = gradY(i, j);
-        gradient(i, j) = std::sqrt(x * x + y * y);
-    });
+    std::pair<Image, Image> result;
+    auto& gradX = result.first;
+    auto& gradY = result.second;
 
-    saveImage(image, "output/1.png");
-    saveImage(gradX, "output/1_x.png", true);
-    saveImage(gradY, "output/1_y.png", true);
-    saveImage(gradient, "output/1_g.png");
-    return 0;
-} 
+    gradX = convolve(image, gX, norm_factor);
+    gradY = convolve(image, gY, norm_factor);
+
+    return result;
+}
