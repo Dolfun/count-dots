@@ -12,30 +12,34 @@ using size_t = Image::size_t;
 using data_t = Image::data_t;
 
 #define MAX_CHAR 255
+const auto pi = std::acos(-1.0);
 
 Image loadImage(std::string path);
 void saveImage(const Image& image, std::string path, bool negative = false);
 Image convolve(const Image& input, const Kernel& kernel, data_t norm_factor = 1);
 std::pair<Image, Image> computeGradient(const Image& image);
+Image nonMinimalSuppression(const Image& gradX, const Image& gradY);
 
 int main() {
     auto image = loadImage("input/1.jpg");
-    auto imageX = image.getImageX();
-    auto imageY = image.getImageY();
+    auto sizeX = image.getSizeX();
+    auto sizeY = image.getSizeY();
     saveImage(image, "output/1.png");
 
-    auto [gradX, gradY] = computeGradient(image);
+    auto [gradMagnitude, gradAngle] = computeGradient(image);
 
+    Image gradX(sizeX, sizeY), gradY(sizeX, sizeY);
+    image.process2d([&](size_t i, size_t j) {
+        gradX(i, j) = gradMagnitude(i, j) * std::cos(gradAngle(i, j));
+        gradY(i, j) = gradMagnitude(i, j) * std::sin(gradAngle(i, j));
+    });
     saveImage(gradX, "output/1_x.png", true);
     saveImage(gradY, "output/1_y.png", true);
 
-    Image gradient(imageX, imageY);
-    gradient.process2d([&](size_t i, size_t j) {
-        data_t x = gradX(i, j);
-        data_t y = gradY(i, j);
-        gradient(i, j) = std::sqrt(x * x + y * y);
-    });
-    saveImage(gradient, "output/1_g.png");
+    saveImage(gradMagnitude, "output/1_g.png");
+
+    Image nms = nonMinimalSuppression(gradX, gradY);
+    saveImage(nms, "output/1_nms.png");
 
     return 0;
 } 
@@ -65,10 +69,10 @@ Image loadImage(std::string path) {
 }
 
 void saveImage(const Image& image, std::string path, bool negative) {
-    auto imageX = image.getImageX();
-    auto imageY = image.getImageY();
+    auto sizeX = image.getSizeX();
+    auto sizeY = image.getSizeY();
     int nrChannels = 4;
-    auto n = imageX * imageY;
+    auto n = sizeX * sizeY;
 
     std::vector<unsigned char> data(n * nrChannels);
     if (!negative) {
@@ -93,7 +97,7 @@ void saveImage(const Image& image, std::string path, bool negative) {
 
     std::string newPath = path.substr(0, path.find_last_of(".")) + ".png";
     stbi_flip_vertically_on_write(true);
-    if(!stbi_write_png(newPath.c_str(), imageX, imageY, nrChannels, data.data(), imageX * nrChannels)) {
+    if(!stbi_write_png(newPath.c_str(), sizeX, sizeY, nrChannels, data.data(), sizeX * nrChannels)) {
         std::cerr << "Failed to write image at path: " << newPath << std::endl;
         return;
     }
@@ -101,9 +105,9 @@ void saveImage(const Image& image, std::string path, bool negative) {
 
 // Odd sized square kernel convulation
 Image convolve(const Image& input, const Kernel& kernel, data_t norm_factor) {
-    auto imageX = input.getImageX();
-    auto imageY = input.getImageY();
-    Image output(imageX, imageY);
+    auto sizeX = input.getSizeX();
+    auto sizeY = input.getSizeY();
+    Image output(sizeX, sizeY);
     output.process2d([&](size_t i, size_t j) {
         data_t sum = 0;
         kernel.process2d([&](size_t x, size_t y) {
@@ -131,11 +135,22 @@ std::pair<Image, Image> computeGradient(const Image& image) {
     data_t norm_factor = 4;
 
     std::pair<Image, Image> result;
-    auto& gradX = result.first;
-    auto& gradY = result.second;
+    auto& gradMagnitude = result.first;
+    auto& gradAngle = result.second;
 
-    gradX = convolve(image, gX, norm_factor);
-    gradY = convolve(image, gY, norm_factor);
+    auto gradX = convolve(image, gX, norm_factor);
+    auto gradY = convolve(image, gY, norm_factor);
+
+    image.process2d([&](size_t i, size_t j) {
+        auto gx = gradX(i, j);
+        auto gy = gradY(i, j);
+        gradMagnitude(i, j) = std::sqrt(gx * gx + gy * gy);
+        gradAngle(i, j) = std::atan2(gy, gx);
+    });
 
     return result;
+}
+
+Image nonMinimalSuppression(const Image& gradX, const Image& gradY) {
+
 }

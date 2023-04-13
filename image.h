@@ -12,29 +12,28 @@ public:
 
     Image() = default;
 
-    Image(size_t _imageX, size_t _imageY) : imageX(_imageX), imageY(_imageY) {
-        data.resize(imageX * imageY);
+    Image(size_t _sizeX, size_t _sizeY) : sizeX(_sizeX), sizeY(_sizeY) {
+        data.resize(sizeX * sizeY);
     }
 
-
-    size_t getImageX() const {
-        return imageX;
+    size_t getSizeX() const {
+        return sizeX;
     }
 
-    size_t getImageY() const {
-        return imageY;
+    size_t getSizeY() const {
+        return sizeY;
     }
 
     size_t get1dIndex(size_t i, size_t j) const {
-        return j * imageX + i;
+        return j * sizeX + i;
     }
 
     bool isValidIndex(size_t i, size_t j) const {
-        return (i > 0) && (j > 0) && (i < imageX) && (j < imageY);
+        return (i > 0) && (j > 0) && (i < sizeX) && (j < sizeY);
     }
 
     bool isBorderIndex(size_t i, size_t j) const {
-        return (i == 0) || (j == 0) || (i == imageX - 1) || (j == imageY - 1);
+        return (i == 0) || (j == 0) || (i == sizeX - 1) || (j == sizeY - 1);
     }
 
     const vector getData() const {
@@ -66,8 +65,8 @@ public:
 
     template<typename Functor>
     void process2d(Functor&& f) const {
-        for (size_t i = 0; i < imageX; ++i) {
-            for (size_t j = 0; j < imageY; ++j) {
+        for (size_t i = 0; i < sizeX; ++i) {
+            for (size_t j = 0; j < sizeY; ++j) {
                 f(i, j);
             }
         }
@@ -79,7 +78,7 @@ protected:
     }
 
 private:
-    size_t imageX, imageY;
+    size_t sizeX, sizeY;
     vector data;
 };
 
