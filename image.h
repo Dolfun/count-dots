@@ -33,6 +33,10 @@ public:
         return (i > 0) && (j > 0) && (i < imageX) && (j < imageY);
     }
 
+    bool isBorderIndex(size_t i, size_t j) const {
+        return (i == 0) || (j == 0) || (i == imageX - 1) || (j == imageY - 1);
+    }
+
     const vector getData() const {
         return data;
     }
