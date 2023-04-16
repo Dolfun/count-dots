@@ -1,9 +1,21 @@
 #ifndef IMAGE_H_INCLUDED
 #define IMAGE_H_INCLUDED
 
-#include <vector>
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
 
-// Greyscale image class
+#include <vector>
+#include <string>
+#include "debug.h"
+
+#define MAX_CHAR 256
+
+class Image;
+Image load_image(std::string path);
+void save_image(const Image& image, std::string path);
+
 class Image {
 public:
     using data_t = double;
@@ -12,97 +24,127 @@ public:
 
     Image() = default;
 
-    Image(size_t _sizeX, size_t _sizeY) : sizeX(_sizeX), sizeY(_sizeY) {
-        data.resize(sizeX * sizeY);
-        std::fill(data.begin(), data.end(), 0.0);
+    Image(size_t __width, size_t __height, size_t __nr_channels) :
+        _width(__width), _height(__height), _nr_channels(__nr_channels) {
+            _data.resize(_width * _height * _nr_channels);
+            std::fill(_data.begin(), _data.end(), 0);
     }
 
-    size_t getSizeX() const {
-        return sizeX;
+    size_t width() const {
+        return _width;
     }
 
-    size_t getSizeY() const {
-        return sizeY;
+    size_t height() const {
+        return _height;
     }
 
-    size_t get1dIndex(size_t i, size_t j) const {
-        return j * sizeX + i;
+    size_t nr_channels() const {
+        return _nr_channels;
     }
 
-    bool isValidIndex(size_t i, size_t j, size_t padding = 0) const {
-        return (i > padding) && (j > padding) && (i < sizeX - padding) && (j < sizeY - padding);
+    const vector& data() const {
+        return _data;
     }
 
-    bool isBorderIndex(size_t i, size_t j) const {
-        return (i == 0) || (j == 0) || (i == sizeX - 1) || (j == sizeY - 1);
+    void set_data(size_t __width, size_t __height, size_t __nr_channels, vector&& __data) {
+        _width = __width;
+        _height = __height;
+        _nr_channels = _nr_channels;
+        _data = std::forward<vector>(__data);
     }
 
-    const vector getData() const {
-        return data;
+    bool is_valid_index(size_t i, size_t j) const {
+        return i >= 0 && j >= 0 && i < _width && j < _height;
     }
 
-    data_t& operator() (size_t i) {
-        return data[i];
+    bool is_border_index(size_t i, size_t j) const {
+        return is_valid_index(i, j) && 
+               (i == 0 || j == 0 || (i == _width - 1) || (j == _height - 1));
     }
 
-    const data_t& operator() (size_t i) const {
-        return data[i];
+    size_t get_1d_index(size_t i, size_t j, size_t channel = 0) const {
+        return _nr_channels * ((j * _width) + i) + channel;
     }
 
-    data_t& operator() (size_t i, size_t j) {
-        return data[get1dIndex(i, j)];
+    data_t& operator[] (size_t i) {
+        return _data[i];
     }
 
-    const data_t& operator() (size_t i, size_t j) const {
-        return data[get1dIndex(i, j)];
+    const data_t& operator[] (size_t i) const {
+        return _data[i];
+    }
+
+    data_t& operator() (size_t i, size_t j, size_t channel = 0) {
+        return _data[get_1d_index(i, j, channel)];
+    }
+
+    const data_t& operator() (size_t i, size_t j, size_t channel = 0) const {
+        return _data[get_1d_index(i, j, channel)];
     }
 
     template<typename Functor>
-    void process1d(Functor&& f) const {
-        for (size_t i = 0; i < data.size(); ++i) {
+    void loop_1d(Functor&& f) const {
+        for (size_t i = 0; i < _data.size(); ++i) {
             f(i);
         }
     }
 
     template<typename Functor>
-    void process2d(Functor&& f) const {
-        for (size_t i = 0; i < sizeX; ++i) {
-            for (size_t j = 0; j < sizeY; ++j) {
+    void loop_2d(Functor&& f) const {
+        for (size_t i = 0; i < _width; ++i) {
+            for (size_t j = 0; j < _height; ++j) {
                 f(i, j);
             }
         }
     }
-
-protected:
-    vector& getData() {
-        return data;
-    }
-
 private:
-    size_t sizeX, sizeY;
-    vector data;
+    size_t _width, _height, _nr_channels;
+    vector _data;
+
+    Debug debug;
 };
 
-class Kernel : public Image {
-public:
-    Kernel(size_t _size) : Image(_size, _size), size(_size) {}
+Image load_image(std::string path) {
+    int width, height, nr_channels;
+    stbi_set_flip_vertically_on_load(true);
+    unsigned char* data = stbi_load(path.c_str(), &width, &height, &nr_channels, 0);
 
-    void operator= (const vector& input) {
-        getData() = input;
+    if (data == nullptr) {
+        std::cerr << "Failed to load image at path: " + path << '\n';
     }
 
-    size_t getSize() const {
-        return size;
-    }
-private:
-    size_t size;
-};
+    Image image(width, height, nr_channels);
+    image.loop_1d([&](Image::size_t i) {
+        image[i] = (Image::data_t)data[i] / MAX_CHAR;
+    });
 
-struct vec2 {
-    vec2() = default;
-    vec2(size_t _x, size_t _y) : x(_x), y(_y) {}
-    Image::size_t x = 0;
-    Image::size_t y = 0;
-};
+    // RAII :<
+    stbi_image_free(data);
+    return image;
+}
+
+void save_image(const Image& image, std::string path) {
+    std::vector<unsigned char> data(image.data().size());
+    image.loop_1d([&](Image::size_t i) {
+        data[i] = static_cast<unsigned char>(image[i] * MAX_CHAR);
+    });
+
+    std::string extension = path.substr(path.find_last_of(".") + 1);
+    stbi_flip_vertically_on_write(true);
+    if (extension == "png") {
+        if(!stbi_write_png(path.c_str(), image.width(), image.height(), image.nr_channels(), 
+                        data.data(), image.width() * image.nr_channels())) {
+            std::cerr << "Failed to write image at path: " << path << '\n';
+        }
+    } else if (extension == "jpg") {
+        if(!stbi_write_jpg(path.c_str(), image.width(), image.height(), image.nr_channels(), 
+                        data.data(), 100)) {
+            std::cerr << "Failed to write image at path: " << path << '\n';
+        }
+    }
+    else {
+        std::cerr << extension << " files not supported." << '\n';
+    }
+}
 
 #endif
