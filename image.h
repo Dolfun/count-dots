@@ -8,6 +8,7 @@
 
 #include <vector>
 #include <string>
+#include <filesystem>
 #include "debug.h"
 
 #define MAX_CHAR 256
@@ -62,10 +63,6 @@ public:
                (i == 0 || j == 0 || (i == _width - 1) || (j == _height - 1));
     }
 
-    size_t get_1d_index(size_t i, size_t j, size_t channel = 0) const {
-        return _nr_channels * ((j * _width) + i) + channel;
-    }
-
     data_t& operator[] (size_t i) {
         return _data[i];
     }
@@ -98,6 +95,10 @@ public:
         }
     }
 private:
+    size_t get_1d_index(size_t i, size_t j, size_t channel = 0) const {
+        return _nr_channels * ((j * _width) + i) + channel;
+    }
+
     size_t _width, _height, _nr_channels;
     vector _data;
 
@@ -129,14 +130,14 @@ void save_image(const Image& image, std::string path) {
         data[i] = static_cast<unsigned char>(image[i] * MAX_CHAR);
     });
 
-    std::string extension = path.substr(path.find_last_of(".") + 1);
+    std::string extension = std::filesystem::path(path).extension().string();
     stbi_flip_vertically_on_write(true);
-    if (extension == "png") {
+    if (extension == ".png") {
         if(!stbi_write_png(path.c_str(), image.width(), image.height(), image.nr_channels(), 
                         data.data(), image.width() * image.nr_channels())) {
             std::cerr << "Failed to write image at path: " << path << '\n';
         }
-    } else if (extension == "jpg") {
+    } else if (extension == ".jpg") {
         if(!stbi_write_jpg(path.c_str(), image.width(), image.height(), image.nr_channels(), 
                         data.data(), 100)) {
             std::cerr << "Failed to write image at path: " << path << '\n';
