@@ -6,8 +6,8 @@
 class Debug {
 public:
     Debug() {
-        id = nr_instances;
-        ++nr_instances;
+        id = _nr_instances;
+        ++_nr_instances;
         std::cout << "constructor: " << id << '\n';
     }
 
@@ -33,11 +33,15 @@ public:
         std::cout << "destructor: " << id << '\n';
     }
 
+    static std::size_t nr_instances() {
+        return _nr_instances;
+    }
+
 private:
-    static std::size_t nr_instances;
+    static std::size_t _nr_instances;
     std::size_t id;
 };
 
-std::size_t Debug::nr_instances = 0;
+std::size_t Debug::_nr_instances = 0;
 
 #endif

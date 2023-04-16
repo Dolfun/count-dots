@@ -13,10 +13,6 @@
 
 #define MAX_CHAR 256
 
-class Image;
-Image load_image(std::string path);
-void save_image(const Image& image, std::string path);
-
 class Image {
 public:
     using data_t = double;
@@ -94,6 +90,11 @@ public:
             }
         }
     }
+protected:
+    vector& data() {
+        return _data;
+    }
+
 private:
     size_t get_1d_index(size_t i, size_t j, size_t channel = 0) const {
         return _nr_channels * ((j * _width) + i) + channel;
@@ -102,7 +103,23 @@ private:
     size_t _width, _height, _nr_channels;
     vector _data;
 
-    Debug debug;
+    // Debug debug;
+};
+
+class Kernel : public Image {
+public:
+    Kernel(Image::size_t __size) : Image(__size, __size, 1), _size(__size) {}
+
+    Kernel& operator= (Image::vector _data) {
+        this->data() = _data;
+        return *this;
+    }
+
+    Image::size_t size() const {
+        return _size;
+    }
+private:
+    Image::size_t _size;
 };
 
 Image load_image(std::string path) {
@@ -146,6 +163,27 @@ void save_image(const Image& image, std::string path) {
     else {
         std::cerr << extension << " files not supported." << '\n';
     }
+}
+
+Image convolve_2d(const Image& image, const Kernel& kernel, Image::data_t normalizing_factor = 1, bool flip_y = true) {
+    Image output{image.width(), image.height(), image.nr_channels()};
+
+    output.loop_2d([&](Image::size_t i, Image::size_t j) {
+        for (Image::size_t k = 0; k < output.nr_channels(); ++k) {
+            Image::data_t kernel_sum = 0;
+            kernel.loop_2d([&](Image::size_t x, Image::size_t y) {
+                auto n = kernel.size();
+                if (flip_y) y = n - y - 1;
+                auto _i = i + x - n / 2;
+                auto _j = j + y - n / 2;
+                if (!output.is_valid_index(_i, _j)) return;
+                kernel_sum += image(_i, _j, k) * kernel(x, y);
+            });
+            output(i, j, k) = kernel_sum / normalizing_factor;
+        }
+    });
+
+    return output;
 }
 
 #endif
