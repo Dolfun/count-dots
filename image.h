@@ -16,7 +16,8 @@
 class Image {
 public:
     using data_t = double;
-    using size_t = std::size_t;
+    using size_t = unsigned long long;
+    using ssize_t = long long;
     using vector = std::vector<data_t>;
 
     Image() = default;
@@ -43,18 +44,18 @@ public:
         return _data;
     }
 
-    void set_data(size_t __width, size_t __height, size_t __nr_channels, vector&& __data) {
+    void set_data(size_t __width, size_t __height, size_t __nr_channels, vector&& __data = {}) {
         _width = __width;
         _height = __height;
-        _nr_channels = _nr_channels;
+        _nr_channels = __nr_channels;
         _data = std::forward<vector>(__data);
     }
 
-    bool is_valid_index(size_t i, size_t j) const {
+    bool is_valid_index(ssize_t i, ssize_t j) const {
         return i >= 0 && j >= 0 && i < _width && j < _height;
     }
 
-    bool is_border_index(size_t i, size_t j) const {
+    bool is_border_index(ssize_t i, ssize_t j) const {
         return is_valid_index(i, j) && 
                (i == 0 || j == 0 || (i == _width - 1) || (j == _height - 1));
     }
@@ -144,7 +145,7 @@ Image load_image(std::string path) {
 void save_image(const Image& image, std::string path) {
     std::vector<unsigned char> data(image.data().size());
     image.loop_1d([&](Image::size_t i) {
-        data[i] = static_cast<unsigned char>(image[i] * MAX_CHAR);
+        data[i] = static_cast<unsigned char>(image[i] * (MAX_CHAR - 1));
     });
 
     std::string extension = std::filesystem::path(path).extension().string();
@@ -171,19 +172,90 @@ Image convolve_2d(const Image& image, const Kernel& kernel, Image::data_t normal
     output.loop_2d([&](Image::size_t i, Image::size_t j) {
         for (Image::size_t k = 0; k < output.nr_channels(); ++k) {
             Image::data_t kernel_sum = 0;
-            kernel.loop_2d([&](Image::size_t x, Image::size_t y) {
-                auto n = kernel.size();
+            kernel.loop_2d([&](Image::ssize_t x, Image::ssize_t y) {
+                Image::ssize_t n = kernel.size();
+                auto _y = y;
                 if (flip_y) y = n - y - 1;
-                auto _i = i + x - n / 2;
-                auto _j = j + y - n / 2;
+                Image::ssize_t _i = i + x - n / 2;
+                Image::ssize_t _j = j + y - n / 2;
                 if (!output.is_valid_index(_i, _j)) return;
-                kernel_sum += image(_i, _j, k) * kernel(x, y);
+                kernel_sum += image(_i, _j, k) * kernel(x, _y);
             });
             output(i, j, k) = kernel_sum / normalizing_factor;
         }
     });
 
     return output;
+}
+
+Image apply_non_maximum_suppression(const Image& gradient_magnitude, const Image& gradient_angle, bool interpolate = false) {
+    Image output{gradient_magnitude.width(), gradient_magnitude.height(), gradient_magnitude.nr_channels()};
+    const Image::data_t pi = std::acos(-1);
+
+    if (interpolate) {
+
+    } else {
+        auto is_between = [pi] (Image::data_t angle, Image::data_t lower, Image::data_t upper) {
+            if (angle < 0) angle += pi;
+            if (lower < 0) lower += pi;
+            if (upper < 0) upper += pi;
+            return angle >= lower && angle <= upper;
+        };
+
+        output.loop_2d([&](Image::size_t i, Image::size_t j) {
+            if (output.is_border_index(i, j)) return;
+            auto angle = gradient_angle(i, j);
+            Image::data_t g_next, g_prev;
+            if (is_between(angle, -pi / 8, pi / 8)) {
+                g_next = gradient_magnitude(i + 1, j);
+                g_prev = gradient_magnitude(i - 1, j);
+            } else if (is_between(angle, pi / 8, 3 * pi / 8)) {
+                g_next = gradient_magnitude(i + 1, j + 1);
+                g_prev = gradient_magnitude(i - 1, j - 1);
+            } else if (is_between(angle, 3 * pi / 8, 5 * pi / 8)) {
+                g_next = gradient_magnitude(i, j + 1);
+                g_prev = gradient_magnitude(i, j - 1);
+            } else {
+                g_next = gradient_magnitude(i - 1, j + 1);
+                g_prev = gradient_magnitude(i + 1, j - 1);
+            }
+            auto g_curr = gradient_magnitude(i, j);
+            if (g_curr >= g_next && g_curr >= g_prev) output(i, j) = g_curr;
+        });
+    }
+    
+    return output;
+}
+
+void draw_line(Image& image, 
+               Image::ssize_t x0, Image::ssize_t y0,
+               Image::ssize_t x1, Image::ssize_t y1,
+               const Image::vector& color) {
+
+    auto dx = std::abs(static_cast<Image::ssize_t>(x1 - x0));
+    auto sx = x0 < x1 ? 1 : -1;
+    auto dy = -std::abs(static_cast<Image::ssize_t>(y1 - y0));
+    auto sy = y0 < y1 ? 1 : -1;
+    auto error = dx + dy;
+
+    while (true) {
+        for (Image::size_t k = 0; k < image.nr_channels(); ++k) {
+            if (!image.is_valid_index(x0, y0)) break;
+            image(x0, y0, k) = color[k];
+        }
+        if (x0 == x1 && y0 == y1) break;
+        auto e2 = 2 * error;
+        if (e2 >= dy) {
+            if (x0 == x1) break;
+            error += dy;
+            x0 += sx;
+        }
+        if (e2 <= dx) {
+            if (y0 == y1) break;
+            error += dx;
+            y0 += sy;
+        }
+    }
 }
 
 #endif
