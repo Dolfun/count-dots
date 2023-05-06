@@ -80,7 +80,7 @@ public:
                       << std::fixed << std::setprecision(3) << duration << "s  "
                       << std::right << std::setw(5) << std::setprecision(2) << (duration / total_duration * 100.0) << "%\n";
         }
-        std::cout << "Total duration: " << total_duration << "s\n";
+        std::cout << "total duration: " << total_duration << "s\n";
     }
 private:
     std::vector<std::pair<std::string, double>> data;
